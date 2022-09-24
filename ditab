@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+
+from subprocess import run, PIPE
+from argparse import ArgumentParser
+from argcomplete import autocomplete, SuppressCompleter
+from sys import exit, stderr
+from pathlib import Path
+from os import geteuid, environ
+
+root = geteuid() == 0
+config = Path('/etc/dinit.d' if root else f'{environ["HOME"]}/.config/dinit.d')
+
+
+class CMD:
+    list = 'dinitctl', 'list'
+    start = 'dinitctl', 'start'
+    stop = 'dinitctl', 'stop'
+    restart = 'dinitctl', 'restart'
+
+
+def pack(*args):
+    return args
+
+
+def break_down(line):
+    '''parse one line of dinitctl list'''
+    lineiter = enumerate(line)
+
+    # pick out the [ ... ] status part of the line
+    n = 0
+    for i, c in lineiter:
+        n += +1 if c == '[' else -1 if c == ']' else 0
+        if n <= 0:
+            break
+    else:
+        yield ''
+        yield line
+        yield ''
+        return
+
+    i += 1
+    yield line[:i]
+
+    # pick out the service name part of the line
+    for j, c in lineiter:
+        if c == '(':
+            break
+    else:
+        yield line[i:]
+        yield ''
+        return
+
+    yield line[i:j]
+
+    # pick out the PID part of the line
+    n = 1
+    for k, c in lineiter:
+        n += +1 if c == '(' else -1 if c == ')' else 0
+        if n <= 0:
+            break
+    else:
+        yield line[j:]
+        return
+
+    yield line[j:k + 1]
+
+    for _ in lineiter:  # should be done here
+        raise SyntaxError(f'{repr(line)} not formatted properly')
+
+
+def active(status):
+    return '+' in status
+
+
+def pid_int(pid):
+    if not pid:
+        return
+    if not pid.startswith('(pid: ') or not pid.endswith(')'):
+        raise SyntaxError(f'{repr(pid)} not formatted properly')
+    return int(pid[6:-1])
+
+
+def get_all(**kwargs):
+    for file in config.iterdir():
+        if file.is_file() and not file.name.startswith('.'):
+            yield file.name
+
+
+def get_list():
+    '''run and parse dinitctl list'''
+    res = run(CMD.list, stdout=PIPE)
+    if res.returncode:
+        exit(res.returncode)
+    lines = res.stdout.decode().splitlines(keepends=False)
+    for line in lines:
+        status, name, pid = break_down(line)
+        yield active(status), name.strip(), pid_int(pid)
+
+
+def get_on(**kwargs):
+    for on, name, pid in get_list():
+        if on:
+            yield name
+
+
+def get_off(**kwargs):
+    yield from set(get_all()) - set(get_on())
+
+
+def do_list(args):
+    listed = list(get_list())
+    maxlen = max(len(n) for _, n, _ in listed)
+    available = set(get_all())
+    for on, name, pid in listed:
+        onstr = '+ ' if on else '- '
+        pidstr = '' if pid is None else f' PID:{pid}'
+        namestr = name if pid is None else name.ljust(maxlen)
+        available.remove(name)
+        print(onstr, namestr, pidstr, sep='')
+    for name in sorted(available):
+        print('-', name)
+
+
+def do_start_stop_restart(args):
+    cmd = getattr(CMD, args.command)
+    res = run(pack(*cmd, args.service), stderr=PIPE)
+    if res.returncode:
+        if b'cannot restart service' not in res.stderr:
+            stderr.buffer.write(res.stderr)
+            exit(res.returncode)
+        res = run(pack(*CMD.start, args.service))
+        if res.returncode:
+            exit(res.returncode)
+
+
+parser = ArgumentParser()
+subparsers = parser.add_subparsers(
+    dest='command', required=True,
+    help='top-level command',
+)
+subparsers.add_parser('list', help='list services')
+completers = { 'start': get_off, 'stop': get_on, 'restart': get_all }
+for cmd in 'start', 'stop', 'restart':
+    subparser = subparsers.add_parser(cmd, help=f'{cmd} a service')
+    subparser.add_argument('service').completer = completers[cmd]
+autocomplete(parser, default_completer=SuppressCompleter)
+args = parser.parse_args()
+
+{
+    'list': do_list,
+    'start': do_start_stop_restart,
+    'stop': do_start_stop_restart,
+    'restart': do_start_stop_restart,
+}[args.command](args)
