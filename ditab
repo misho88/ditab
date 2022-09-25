@@ -52,7 +52,7 @@ def break_down(line):
 
     yield line[i:j]
 
-    # pick out the PID part of the line
+    # pick out the (...) part of the line
     n = 1
     for k, c in lineiter:
         n += +1 if c == '(' else -1 if c == ')' else 0
@@ -72,14 +72,6 @@ def active(status):
     return '+' in status
 
 
-def pid_int(pid):
-    if not pid:
-        return
-    if not pid.startswith('(pid: ') or not pid.endswith(')'):
-        raise SyntaxError(f'{repr(pid)} not formatted properly')
-    return int(pid[6:-1])
-
-
 def get_all(**kwargs):
     for file in config.iterdir():
         if file.is_file() and not file.name.startswith('.'):
@@ -93,8 +85,8 @@ def get_list():
         exit(res.returncode)
     lines = res.stdout.decode().splitlines(keepends=False)
     for line in lines:
-        status, name, pid = break_down(line)
-        yield active(status), name.strip(), pid_int(pid)
+        status, name, info = break_down(line)
+        yield active(status), name.strip(), info
 
 
 def get_on(**kwargs):
@@ -111,12 +103,12 @@ def do_list(args):
     listed = list(get_list())
     maxlen = max(len(n) for _, n, _ in listed)
     available = set(get_all())
-    for on, name, pid in listed:
+    for on, name, info in listed:
         onstr = '+ ' if on else '- '
-        pidstr = '' if pid is None else f' PID:{pid}'
-        namestr = name if pid is None else name.ljust(maxlen)
+        infostr = '' if not info else f' {info}'
+        namestr = name if not info else name.ljust(maxlen)
         available.remove(name)
-        print(onstr, namestr, pidstr, sep='')
+        print(onstr, namestr, infostr, sep='')
     for name in sorted(available):
         print('-', name)
 
