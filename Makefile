@@ -4,7 +4,7 @@ BINDIR?=/usr/local/bin/
 COMPDIR?=/etc/bash_completion.d/
 
 all:
-	@echo run make (un)install to (un)install
+	@echo 'run make (un)install to (un)install'
 
 install:
 	install -d $(BINDIR)
