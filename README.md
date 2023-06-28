@@ -1,4 +1,5 @@
 # ditab
+
 dinitctl wrapper with tab completion
 
 # differences from dinitctl
@@ -11,7 +12,7 @@ ditab only supports `list`, `start`, `stop` and `restart` commands.
 
 `list` has a simpler output format: `± name[ (info)]`, where `±` is `+` for running services and `-` otherwise.
 
-`restart` starts a service which hasn't been started instead of erroring out.
+`restart` just runs `stop` then `start` instead of whatever `dinitctl` does.
 
 # installation
 
@@ -23,3 +24,4 @@ ditab only supports `list`, `start`, `stop` and `restart` commands.
 # requirements
 
 Python 3.6+ with the `argcomplete` package
+execline: https://www.skarnet.org/software/execline/

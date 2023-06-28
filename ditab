@@ -12,14 +12,22 @@ config = Path('/etc/dinit.d' if root else f'{environ["HOME"]}/.config/dinit.d')
 
 
 class CMD:
-    list = 'dinitctl', 'list'
-    start = 'dinitctl', 'start'
-    stop = 'dinitctl', 'stop'
-    restart = 'dinitctl', 'restart'
+    @staticmethod
+    def list():
+        return 'dinitctl', 'list'
 
+    @staticmethod
+    def start(service):
+        return 'dinitctl', 'start', service
 
-def pack(*args):
-    return args
+    @staticmethod
+    def stop(service):
+        return 'dinitctl', 'stop', service
+
+    @staticmethod
+    def restart(service):
+        # NOTE: "dinitctl restart" is weird even when it works as it's supposed to
+        return 'if', 'dinitctl', 'stop', service, '', 'dinitctl', 'start', service
 
 
 def break_down(line):
@@ -80,7 +88,7 @@ def get_all(**kwargs):
 
 def get_list():
     '''run and parse dinitctl list'''
-    res = run(CMD.list, stdout=PIPE)
+    res = run(CMD.list(), stdout=PIPE)
     if res.returncode:
         exit(res.returncode)
     lines = res.stdout.decode().splitlines(keepends=False)
@@ -114,15 +122,9 @@ def do_list(args):
 
 
 def do_start_stop_restart(args):
-    cmd = getattr(CMD, args.command)
-    res = run(pack(*cmd, args.service), stderr=PIPE)
+    res = run(getattr(CMD, args.command)(args.service))
     if res.returncode:
-        if b'cannot restart service' not in res.stderr:
-            stderr.buffer.write(res.stderr)
-            exit(res.returncode)
-        res = run(pack(*CMD.start, args.service))
-        if res.returncode:
-            exit(res.returncode)
+        exit(res.returncode)
 
 
 parser = ArgumentParser()
@@ -134,8 +136,8 @@ subparsers.add_parser('list', help='list services')
 completers = { 'start': get_off, 'stop': get_on, 'restart': get_all }
 for cmd in 'start', 'stop', 'restart':
     subparser = subparsers.add_parser(cmd, help=f'{cmd} a service')
-    subparser.add_argument('service').completer = completers[cmd]
-autocomplete(parser, default_completer=SuppressCompleter)
+    subparser.add_argument('service').completer = completers[cmd]  # type: ignore
+autocomplete(parser, default_completer=SuppressCompleter)  # type: ignore
 args = parser.parse_args()
 
 {
