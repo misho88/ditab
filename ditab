@@ -29,6 +29,10 @@ class CMD:
         # NOTE: "dinitctl restart" is weird even when it works as it's supposed to
         return 'if', 'dinitctl', 'stop', service, '', 'dinitctl', 'start', service
 
+    @staticmethod
+    def replace(service, other):
+        return 'if', 'dinitctl', 'stop', service, '', 'dinitctl', 'start', other
+
 
 def break_down(line):
     '''parse one line of dinitctl list'''
@@ -127,6 +131,12 @@ def do_start_stop_restart(args):
         exit(res.returncode)
 
 
+def do_replace(args):
+    res = run(getattr(CMD, args.command)(args.service, args.other))
+    if res.returncode:
+        exit(res.returncode)
+
+
 parser = ArgumentParser()
 subparsers = parser.add_subparsers(
     dest='command', required=True,
@@ -137,6 +147,10 @@ completers = { 'start': get_off, 'stop': get_on, 'restart': get_all }
 for cmd in 'start', 'stop', 'restart':
     subparser = subparsers.add_parser(cmd, help=f'{cmd} a service')
     subparser.add_argument('service').completer = completers[cmd]  # type: ignore
+subparser = subparsers.add_parser('replace', help=f'stop one service and start another')
+subparser.add_argument('service').completer = completers['stop']  # type: ignore
+subparser.add_argument('other').completer = completers['start']  # type: ignore
+
 autocomplete(parser, default_completer=SuppressCompleter)  # type: ignore
 args = parser.parse_args()
 
@@ -145,4 +159,5 @@ args = parser.parse_args()
     'start': do_start_stop_restart,
     'stop': do_start_stop_restart,
     'restart': do_start_stop_restart,
+    'replace': do_replace,
 }[args.command](args)
